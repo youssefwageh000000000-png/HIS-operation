@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة تحكم التيم ليدر - متابعة المستشفيات</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background: #f4f6f9; color: #333; margin: 0; }
+        .header { background: #007bff; color: white; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 25px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .table-container { background: white; border-radius: 8px; overflow-x: auto; box-shadow: 0 4px 15px rgba(0,0,0,0.05); padding: 15px; }
+        table { width: 100%; border-collapse: collapse; min-width: 600px; }
+        th, td { border-bottom: 1px solid #eee; padding: 14px; text-align: center; }
+        th { background-color: #f8f9fa; color: #495057; font-weight: bold; }
+        tr:hover { background-color: #f1f3f5; }
+        .badge-checkin { background: #d4edda; color: #155724; padding: 5px 10px; border-radius: 12px; font-size: 13px; font-weight: bold; }
+        .badge-checkout { background: #f8d7da; color: #721c24; padding: 5px 10px; border-radius: 12px; font-size: 13px; font-weight: bold; }
+        a.location-link { background: #17a2b8; color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 13px; display: inline-block; }
+        a.location-link:hover { background: #138496; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h2 style="margin:0;">لوحة متابعة الحضور والانصراف اللحظية</h2>
+    <p style="margin:5px 0 0 0; opacity: 0.9;">متابعة الـ 5 مستشفيات والشيفتات الصباحية والمسائية</p>
+</div>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>إيميل الموظف</th>
+                <th>المستشفى</th>
+                <th>الشيفت</th>
+                <th>نوع التسجيل</th>
+                <th>الوقت والتاريخ</th>
+                <th>المسافة من المستشفى</th>
+                <th>اللوكيشن على الخريطة</th>
+            </tr>
+        </thead>
+        <tbody id="logsTable">
+            <tr>
+                <td colspan="7">جاري تحميل البيانات الحية...</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { getFirestore, collection, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBNXNf_YWbr3H6DBBZPq0xITaK0wwLd2VI",
+    authDomain: "hospitals-system.firebaseapp.com",
+    projectId: "hospitals-system",
+    storageBucket: "hospitals-system.firebasestorage.app",
+    messagingSenderId: "567733040034",
+    appId: "1:567733040034:web:7564c93e86f5539ebef8fb",
+    measurementId: "G-FPCXJ7NTD0"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  const q = query(collection(db, "attendance"), orderBy("timestamp", "desc"));
+
+  onSnapshot(q, (snapshot) => {
+    const tableBody = document.getElementById("logsTable");
+    tableBody.innerHTML = "";
+
+    if(snapshot.empty) {
+      tableBody.innerHTML = '<tr><td colspan="7">لا توجد سجلات حضور حتى الآن.</td></tr>';
+      return;
+    }
+
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      const timeString = data.timestamp ? new Date(data.timestamp.toDate()).toLocaleString('ar-EG') : 'جاري التسجيل...';
+      const badgeClass = data.type === 'تسجيل حضور' ? 'badge-checkin' : 'badge-checkout';
+
+      const row = `
+        <tr>
+          <td><b>${data.employeeEmail || 'غير معروف'}</b></td>
+          <td>${data.hospital || '-'}</td>
+          <td>${data.shift || '-'}</td>
+          <td><span class="${badgeClass}">${data.type}</span></td>
+          <td>${timeString}</td>
+          <td>${data.distanceFromHosp || '-'}</td>
+          <td><a href="${data.locationUrl}" target="_blank" class="location-link">فتح Google Maps 📍</a></td>
+        </tr>
+      `;
+      tableBody.innerHTML += row;
+    });
+  });
+</script>
+
+</body>
+</html>

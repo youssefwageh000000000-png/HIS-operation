@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تسجيل الحضور والانصراف - المستشفيات</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #eef2f3; text-align: center; padding: 20px; margin: 0; }
+        .card { background: white; padding: 25px; border-radius: 12px; max-width: 420px; margin: 20px auto; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h2 { color: #1a252f; margin-bottom: 20px; }
+        input, select, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #ccc; font-size: 15px; box-sizing: border-box; }
+        button { font-weight: bold; cursor: pointer; border: none; color: white; transition: 0.3s; }
+        .btn-login { background: #007bff; }
+        .btn-login:hover { background: #0056b3; }
+        .btn-checkin { background: #28a745; margin-top: 12px; }
+        .btn-checkin:hover { background: #218838; }
+        .btn-checkout { background: #dc3545; }
+        .btn-checkout:hover { background: #c82333; }
+        .btn-logout { background: #6c757d; }
+        .hidden { display: none; }
+        #status { margin-top: 15px; font-weight: bold; line-height: 1.5; padding: 10px; border-radius: 6px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>نظام متابعة الحضور والانصراف</h2>
+
+    <!-- نموذج تسجيل الدخول -->
+    <div id="loginSection">
+        <h3>تسجيل الدخول للموظف</h3>
+        <input type="email" id="loginEmail" placeholder="البريد الإلكتروني">
+        <input type="password" id="loginPassword" placeholder="كلمة السر">
+        <button class="btn-login" onclick="login()">دخول</button>
+    </div>
+
+    <!-- لوحة الحضور (تظهر بعد الدخول) -->
+    <div id="attendanceSection" class="hidden">
+        <p style="color:#555;">مرحباً: <b id="userEmail" style="color:#007bff;"></b></p>
+        
+        <label style="display:block; text-align:right; margin-top:10px; font-weight:bold;">اختر المستشفى:</label>
+        <select id="hospitalSelect">
+            <option value="hosp1">مستشفى 1 (الرئيسي)</option>
+            <option value="hosp2">مستشفى 2</option>
+            <option value="hosp3">مستشفى 3</option>
+            <option value="hosp4">مستشفى 4</option>
+            <option value="hosp5">مستشفى 5</option>
+        </select>
+
+        <label style="display:block; text-align:right; margin-top:10px; font-weight:bold;">اختر الشيفت:</label>
+        <select id="shiftSelect">
+            <option value="صباحي">شيفت صباحي</option>
+            <option value="مسائي">شيفت مسائي</option>
+        </select>
+
+        <button class="btn-checkin" onclick="registerAttendance('تسجيل حضور')">تسجيل حضور 📍</button>
+        <button class="btn-checkout" onclick="registerAttendance('تسجيل انصراف')">تسجيل انصراف 🚪</button>
+        <button class="btn-logout" onclick="logout()" style="margin-top: 15px;">تسجيل خروج</button>
+    </div>
+
+    <div id="status"></div>
+</div>
+
+<!-- Firebase SDKs -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+  import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+  // بيانات Firebase الخاصة بـ hospitals-system
+  const firebaseConfig = {
+    apiKey: "AIzaSyBNXNf_YWbr3H6DBBZPq0xITaK0wwLd2VI",
+    authDomain: "hospitals-system.firebaseapp.com",
+    projectId: "hospitals-system",
+    storageBucket: "hospitals-system.firebasestorage.app",
+    messagingSenderId: "567733040034",
+    appId: "1:567733040034:web:7564c93e86f5539ebef8fb",
+    measurementId: "G-FPCXJ7NTD0"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  // إحداثيات المستشفيات الـ 5 (يمكنك تعديل الإحداثيات هنا)
+  const hospitalsLocation = {
+    "hosp1": { lat: 30.0444, lng: 31.2357, name: "مستشفى 1" },
+    "hosp2": { lat: 30.0500, lng: 31.2400, name: "مستشفى 2" },
+    "hosp3": { lat: 30.0600, lng: 31.2500, name: "مستشفى 3" },
+    "hosp4": { lat: 30.0700, lng: 31.2600, name: "مستشفى 4" },
+    "hosp5": { lat: 30.0800, lng: 31.2700, name: "مستشفى 5" }
+  };
+
+  // حالة تسجيل الدخول
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      document.getElementById("loginSection").classList.add("hidden");
+      document.getElementById("attendanceSection").classList.remove("hidden");
+      document.getElementById("userEmail").innerText = user.email;
+    } else {
+      document.getElementById("loginSection").classList.remove("hidden");
+      document.getElementById("attendanceSection").classList.add("hidden");
+    }
+  });
+
+  // تسجيل الدخول
+  window.login = function() {
+    const email = document.getElementById("loginEmail").value;
+    const pass = document.getElementById("loginPassword").value;
+    if(!email || !pass) { alert("يرجى أدخل الإيميل والباسورد"); return; }
+    signInWithEmailAndPassword(auth, email, pass)
+      .catch(err => alert("خطأ في البيانات: " + err.message));
+  };
+
+  // تسجيل الخروج
+  window.logout = function() { signOut(auth); };
+
+  // حساب المسافة بالمتر بين نقطتين (Haversine Formula)
+  function getDistanceInMeters(lat1, lon1, lat2, lon2) {
+    const R = 6371e3;
+    const φ1 = lat1 * Math.PI/180;
+    const φ2 = lat2 * Math.PI/180;
+    const Δφ = (lat2-lat1) * Math.PI/180;
+    const Δλ = (lon2-lon1) * Math.PI/180;
+
+    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ/2) * Math.sin(Δλ/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+    return R * c; 
+  }
+
+  // تسجيل الحضور / الانصراف
+  window.registerAttendance = function(type) {
+    const statusDiv = document.getElementById("status");
+    const selectedHospKey = document.getElementById("hospitalSelect").value;
+    const targetHosp = hospitalsLocation[selectedHospKey];
+    const shift = document.getElementById("shiftSelect").value;
+
+    statusDiv.style.background = "#e2e3e5";
+    statusDiv.style.color = "#383d41";
+    statusDiv.innerText = "جاري طلب الـ GPS وتأكيد الموقع...";
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const userLat = position.coords.latitude;
+        const userLng = position.coords.longitude;
+
+        const distance = getDistanceInMeters(userLat, userLng, targetHosp.lat, targetHosp.lng);
+        const maxAllowedDistance = 200; // النطاق المسموح 200 متر
+
+        if (distance > maxAllowedDistance) {
+          statusDiv.style.background = "#f8d7da";
+          statusDiv.style.color = "#721c24";
+          statusDiv.innerText = `❌ عذراً! أنت بعيد عن ${targetHosp.name} بمسافة (${Math.round(distance)} متر). الحد المسموح به هو ${maxAllowedDistance} متر.`;
+          return;
+        }
+
+        try {
+          await addDoc(collection(db, "attendance"), {
+            employeeEmail: auth.currentUser.email,
+            hospital: targetHosp.name,
+            shift: shift,
+            type: type,
+            distanceFromHosp: Math.round(distance) + " متر",
+            locationUrl: `https://maps.google.com/?q=${userLat},${userLng}`,
+            timestamp: serverTimestamp()
+          });
+
+          statusDiv.style.background = "#d4edda";
+          statusDiv.style.color = "#155724";
+          statusDiv.innerText = `✅ تم ${type} بنجاح داخل نطاق ${targetHosp.name}!`;
+        } catch (e) {
+          statusDiv.style.background = "#f8d7da";
+          statusDiv.style.color = "#721c24";
+          statusDiv.innerText = "حدث خطأ في الحفظ: " + e.message;
+        }
+      },
+      (error) => {
+        statusDiv.style.background = "#f8d7da";
+        statusDiv.style.color = "#721c24";
+        statusDiv.innerText = "⚠️ يرجى تفعيل الـ GPS في الموبايل والسماح للمتصفح بالوصول للموقع.";
+      },
+      { enableHighAccuracy: true }
+    );
+  };
+</script>
+
+</body>
+</html>
