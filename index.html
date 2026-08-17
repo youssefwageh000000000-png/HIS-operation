@@ -12,13 +12,15 @@
         button { font-weight: bold; cursor: pointer; border: none; color: white; transition: 0.3s; }
         .btn-login { background: #007bff; }
         .btn-login:hover { background: #0056b3; }
+        .btn-register { background: #17a2b8; }
+        .btn-register:hover { background: #117a8b; }
         .btn-checkin { background: #28a745; margin-top: 12px; }
-        .btn-checkin:hover { background: #218838; }
         .btn-checkout { background: #dc3545; }
-        .btn-checkout:hover { background: #c82333; }
-        .btn-logout { background: #6c757d; }
+        .btn-logout { background: #6c757d; margin-top: 15px; }
         .hidden { display: none; }
         #status { margin-top: 15px; font-weight: bold; line-height: 1.5; padding: 10px; border-radius: 6px; }
+        .status-error { background: #f8d7da; color: #721c24; }
+        .status-success { background: #d4edda; color: #155724; }
     </style>
 </head>
 <body>
@@ -26,15 +28,16 @@
 <div class="card">
     <h2>نظام متابعة الحضور والانصراف</h2>
 
-    <!-- نموذج تسجيل الدخول -->
+    <!-- قسم تسجيل الدخول وإنشاء الحساب -->
     <div id="loginSection">
         <h3>تسجيل الدخول للموظف</h3>
         <input type="email" id="loginEmail" placeholder="البريد الإلكتروني">
         <input type="password" id="loginPassword" placeholder="كلمة السر">
-        <button class="btn-login" onclick="login()">دخول</button>
+        <button class="btn-login" id="btnLogin">دخول</button>
+        <button class="btn-register" id="btnRegister">إنشاء حساب جديد</button>
     </div>
 
-    <!-- لوحة الحضور (تظهر بعد الدخول) -->
+    <!-- قسم الحضور والجيوفينسينج -->
     <div id="attendanceSection" class="hidden">
         <p style="color:#555;">مرحباً: <b id="userEmail" style="color:#007bff;"></b></p>
         
@@ -53,21 +56,19 @@
             <option value="مسائي">شيفت مسائي</option>
         </select>
 
-        <button class="btn-checkin" onclick="registerAttendance('تسجيل حضور')">تسجيل حضور 📍</button>
-        <button class="btn-checkout" onclick="registerAttendance('تسجيل انصراف')">تسجيل انصراف 🚪</button>
-        <button class="btn-logout" onclick="logout()" style="margin-top: 15px;">تسجيل خروج</button>
+        <button class="btn-checkin" id="btnCheckIn">تسجيل حضور 📍</button>
+        <button class="btn-checkout" id="btnCheckOut">تسجيل انصراف 🚪</button>
+        <button class="btn-logout" id="btnLogout">تسجيل خروج</button>
     </div>
 
     <div id="status"></div>
 </div>
 
-<!-- Firebase SDKs -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+  import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
   import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-  // بيانات Firebase الخاصة بـ hospitals-system
   const firebaseConfig = {
     apiKey: "AIzaSyBNXNf_YWbr3H6DBBZPq0xITaK0wwLd2VI",
     authDomain: "hospitals-system.firebaseapp.com",
@@ -82,7 +83,6 @@
   const auth = getAuth(app);
   const db = getFirestore(app);
 
-  // إحداثيات المستشفيات الـ 5 (يمكنك تعديل الإحداثيات هنا)
   const hospitalsLocation = {
     "hosp1": { lat: 30.0444, lng: 31.2357, name: "مستشفى 1" },
     "hosp2": { lat: 30.0500, lng: 31.2400, name: "مستشفى 2" },
@@ -91,31 +91,52 @@
     "hosp5": { lat: 30.0800, lng: 31.2700, name: "مستشفى 5" }
   };
 
-  // حالة تسجيل الدخول
+  const loginSection = document.getElementById("loginSection");
+  const attendanceSection = document.getElementById("attendanceSection");
+  const statusDiv = document.getElementById("status");
+
   onAuthStateChanged(auth, (user) => {
     if (user) {
-      document.getElementById("loginSection").classList.add("hidden");
-      document.getElementById("attendanceSection").classList.remove("hidden");
+      loginSection.classList.add("hidden");
+      attendanceSection.classList.remove("hidden");
       document.getElementById("userEmail").innerText = user.email;
+      showStatus("", "");
     } else {
-      document.getElementById("loginSection").classList.remove("hidden");
-      document.getElementById("attendanceSection").classList.add("hidden");
+      loginSection.classList.remove("hidden");
+      attendanceSection.classList.add("hidden");
     }
   });
 
-  // تسجيل الدخول
-  window.login = function() {
+  function showStatus(msg, type) {
+    statusDiv.innerText = msg;
+    statusDiv.className = "";
+    if (type === 'error') statusDiv.classList.add("status-error");
+    if (type === 'success') statusDiv.classList.add("status-success");
+  }
+
+  document.getElementById("btnLogin").addEventListener("click", () => {
     const email = document.getElementById("loginEmail").value;
     const pass = document.getElementById("loginPassword").value;
-    if(!email || !pass) { alert("يرجى أدخل الإيميل والباسورد"); return; }
+    if(!email || !pass) { showStatus("يرجى إدخال الإيميل والباسورد", "error"); return; }
+    
+    showStatus("جاري تسجيل الدخول...", "");
     signInWithEmailAndPassword(auth, email, pass)
-      .catch(err => alert("خطأ في البيانات: " + err.message));
-  };
+      .catch(err => showStatus("خطأ في الدخول: " + err.message, "error"));
+  });
 
-  // تسجيل الخروج
-  window.logout = function() { signOut(auth); };
+  document.getElementById("btnRegister").addEventListener("click", () => {
+    const email = document.getElementById("loginEmail").value;
+    const pass = document.getElementById("loginPassword").value;
+    if(!email || !pass) { showStatus("ادخل الإيميل والباسورد أولاً لإنشاء الحساب", "error"); return; }
+    
+    showStatus("جاري إنشاء الحساب...", "");
+    createUserWithEmailAndPassword(auth, email, pass)
+      .then(() => showStatus("تم إنشاء الحساب وتأكيد الدخول بنجاح!", "success"))
+      .catch(err => showStatus("خطأ في إنشاء الحساب: " + err.message, "error"));
+  });
 
-  // حساب المسافة بالمتر بين نقطتين (Haversine Formula)
+  document.getElementById("btnLogout").addEventListener("click", () => signOut(auth));
+
   function getDistanceInMeters(lat1, lon1, lat2, lon2) {
     const R = 6371e3;
     const φ1 = lat1 * Math.PI/180;
@@ -127,20 +148,15 @@
               Math.cos(φ1) * Math.cos(φ2) *
               Math.sin(Δλ/2) * Math.sin(Δλ/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-    return R * c; 
+    return R * c;
   }
 
-  // تسجيل الحضور / الانصراف
-  window.registerAttendance = function(type) {
-    const statusDiv = document.getElementById("status");
+  function registerAttendance(type) {
     const selectedHospKey = document.getElementById("hospitalSelect").value;
     const targetHosp = hospitalsLocation[selectedHospKey];
     const shift = document.getElementById("shiftSelect").value;
 
-    statusDiv.style.background = "#e2e3e5";
-    statusDiv.style.color = "#383d41";
-    statusDiv.innerText = "جاري طلب الـ GPS وتأكيد الموقع...";
+    showStatus("جاري طلب الـ GPS وتأكيد الموقع...", "");
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
@@ -148,12 +164,10 @@
         const userLng = position.coords.longitude;
 
         const distance = getDistanceInMeters(userLat, userLng, targetHosp.lat, targetHosp.lng);
-        const maxAllowedDistance = 200; // النطاق المسموح 200 متر
+        const maxAllowedDistance = 200;
 
         if (distance > maxAllowedDistance) {
-          statusDiv.style.background = "#f8d7da";
-          statusDiv.style.color = "#721c24";
-          statusDiv.innerText = `❌ عذراً! أنت بعيد عن ${targetHosp.name} بمسافة (${Math.round(distance)} متر). الحد المسموح به هو ${maxAllowedDistance} متر.`;
+          showStatus(`❌ عذراً! أنت بعيد عن ${targetHosp.name} بمسافة (${Math.round(distance)} متر). الحد المسموح هو ${maxAllowedDistance} متر.`, "error");
           return;
         }
 
@@ -168,23 +182,20 @@
             timestamp: serverTimestamp()
           });
 
-          statusDiv.style.background = "#d4edda";
-          statusDiv.style.color = "#155724";
-          statusDiv.innerText = `✅ تم ${type} بنجاح داخل نطاق ${targetHosp.name}!`;
+          showStatus(`✅ تم ${type} بنجاح داخل نطاق ${targetHosp.name}!`, "success");
         } catch (e) {
-          statusDiv.style.background = "#f8d7da";
-          statusDiv.style.color = "#721c24";
-          statusDiv.innerText = "حدث خطأ في الحفظ: " + e.message;
+          showStatus("حدث خطأ في الحفظ: " + e.message, "error");
         }
       },
       (error) => {
-        statusDiv.style.background = "#f8d7da";
-        statusDiv.style.color = "#721c24";
-        statusDiv.innerText = "⚠️ يرجى تفعيل الـ GPS في الموبايل والسماح للمتصفح بالوصول للموقع.";
+        showStatus("⚠️ يرجى تفعيل الـ GPS في الموبايل والسماح للمتصفح بالوصول للموقع.", "error");
       },
       { enableHighAccuracy: true }
     );
-  };
+  }
+
+  document.getElementById("btnCheckIn").addEventListener("click", () => registerAttendance('تسجيل حضور'));
+  document.getElementById("btnCheckOut").addEventListener("click", () => registerAttendance('تسجيل انصراف'));
 </script>
 
 </body>
